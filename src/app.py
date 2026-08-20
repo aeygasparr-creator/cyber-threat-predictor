@@ -145,6 +145,9 @@ def load_data():
                 df[col].apply(lambda x: x if x in encoders[col].classes_ else
                               encoders[col].classes_[0])
             )
+        # ✅ Aplicar scaler a las features numéricas
+        df[FEATURE_COLS] = scaler.transform(df[FEATURE_COLS])
+
 
     return train, test
 
