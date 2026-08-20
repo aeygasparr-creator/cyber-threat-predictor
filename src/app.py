@@ -85,11 +85,69 @@ def load_models():
     encoders = joblib.load(os.path.join(MODELS_DIR, "encoders.pkl"))
     return rf, xgb, lr, le, scaler, encoders
 
+RAW_DIR = os.path.join("data", "raw")
+
+COLUMNS = [
+    "duration","protocol_type","service","flag","src_bytes","dst_bytes",
+    "land","wrong_fragment","urgent","hot","num_failed_logins","logged_in",
+    "num_compromised","root_shell","su_attempted","num_root",
+    "num_file_creations","num_shells","num_access_files","num_outbound_cmds",
+    "is_host_login","is_guest_login","count","srv_count","serror_rate",
+    "srv_serror_rate","rerror_rate","srv_rerror_rate","same_srv_rate",
+    "diff_srv_rate","srv_diff_host_rate","dst_host_count","dst_host_srv_count",
+    "dst_host_same_srv_rate","dst_host_diff_srv_rate",
+    "dst_host_same_src_port_rate","dst_host_srv_diff_host_rate",
+    "dst_host_serror_rate","dst_host_srv_serror_rate",
+    "dst_host_rerror_rate","dst_host_srv_rerror_rate",
+    "label","difficulty"
+]
+
+DOS_ATTACKS   = {"back","land","neptune","pod","smurf","teardrop","apache2",
+                 "udpstorm","processtable","worm","mailbomb"}
+PROBE_ATTACKS = {"ipsweep","nmap","portsweep","satan","mscan","saint"}
+R2L_ATTACKS   = {"ftp_write","guess_passwd","imap","multihop","phf","spy",
+                 "warezclient","warezmaster","sendmail","named","snmpgetattack",
+                 "snmpguess","xlock","xsnoop","httptunnel"}
+U2R_ATTACKS   = {"buffer_overflow","loadmodule","perl","rootkit","sqlattack",
+                 "xterm","ps"}
+
+def map_label(label):
+    label = label.strip().lower().rstrip(".")
+    if label == "normal":  return "normal"
+    if label in DOS_ATTACKS:   return "DoS"
+    if label in PROBE_ATTACKS: return "Probe"
+    if label in R2L_ATTACKS:   return "R2L"
+    if label in U2R_ATTACKS:   return "U2R"
+    return "other"
+
 @st.cache_data
 def load_data():
-    train = pd.read_csv(os.path.join(PROCESSED_DIR, "train_processed.csv"))
-    test  = pd.read_csv(os.path.join(PROCESSED_DIR, "test_processed.csv"))
+    # Si ya existen los CSVs procesados, usarlos directamente
+    train_path = os.path.join(PROCESSED_DIR, "train_processed.csv")
+    test_path  = os.path.join(PROCESSED_DIR, "test_processed.csv")
+
+    if os.path.exists(train_path) and os.path.exists(test_path):
+        train = pd.read_csv(train_path)
+        test  = pd.read_csv(test_path)
+        return train, test
+
+    # Si no existen, generar desde raw
+    train = pd.read_csv(os.path.join(RAW_DIR, "KDDTrain+.txt"),
+                        header=None, names=COLUMNS)
+    test  = pd.read_csv(os.path.join(RAW_DIR, "KDDTest+.txt"),
+                        header=None, names=COLUMNS)
+
+    for df in [train, test]:
+        df["label_multi"]  = df["label"].apply(map_label)
+        df["label_binary"] = (df["label_multi"] != "normal").astype(int)
+        for col in ["protocol_type", "service", "flag"]:
+            df[col] = encoders[col].transform(
+                df[col].apply(lambda x: x if x in encoders[col].classes_ else
+                              encoders[col].classes_[0])
+            )
+
     return train, test
+
 
 # ─────────────────────────────────────────────
 # CSS PERSONALIZADO
